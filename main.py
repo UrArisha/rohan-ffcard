@@ -1,52 +1,65 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
 from PIL import Image, ImageDraw, ImageFont
-import io
+import os
+import uuid
+import json
 import requests
-from urllib.parse import urlparse
+from io import BytesIO
 
-app = FastAPI()
+def handler():
+    # ইনপুট পড়া
+    input_data = json.loads(os.environ.get('BODY', '{}'))
+    text = input_data.get('text', 'Hello, World!')
+    pos_x = int(input_data.get('position_x', 207))
+    pos_y = int(input_data.get('position_y', 47))
 
-# ImgBB থেকে ছবির URL
-BASE_IMAGE_URL = "https://ibb.co.com/Q4FdmSh"
-
-@app.post("/add-text-to-photo/")
-async def add_text_to_photo(
-    text: str = "আপনার টেক্সট",
-    position_x: int = 207,
-    position_y: int = 47,
-    font_size: int = 40,
-    text_color: str = "white"
-):
+    # বেস ইমেজ লোড (রুট ডিরেক্টরি থেকে)
+    base_image_path = os.path.join(os.path.dirname(__file__), 'Photo.png')
+    img = Image.open(base_image_path)
+    
+    # ড্রয়িং অবজেক্ট
+    draw = ImageDraw.Draw(img)
+    
+    # ফন্ট সেট করা
     try:
-        # ImgBB থেকে ছবি ডাউনলোড
-        response = requests.get(BASE_IMAGE_URL, stream=True)
-        response.raise_for_status()
-        image = Image.open(io.BytesIO(response.content)).convert("RGBA")
+        font = ImageFont.truetype("arial.ttf", 40)
+    except:
+        font = ImageFont.load_default()
 
-        # ড্র করার জন্য অবজেক্ট তৈরি
-        draw = ImageDraw.Draw(image)
+    # টেক্সট যোগ করা
+    draw.text((pos_x, pos_y), text, fill="black", font=font)
 
-        # ডিফল্ট ফন্ট (কাস্টম .ttf ফন্ট যোগ করতে পারেন)
-        try:
-            font = ImageFont.truetype("arial.ttf", font_size)
-        except IOError:
-            font = ImageFont.load_default()
+    # ছবি মেমরিতে সেভ করা
+    img_buffer = BytesIO()
+    img.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
 
-        # ছবিতে টেক্সট যোগ
-        draw.text((position_x, position_y), text, fill=text_color, font=font)
+    # ImgBB API কী (Vercel Environment Variable থেকে)
+    IMGBB_API_KEY = os.environ.get('IMGBB_API_KEY', 'your-imgbb-api-key')  # Vercel-এ সেট করুন
 
-        # পরিবর্তিত ছবি সেভ করা
-        output = io.BytesIO()
-        image.save(output, format="PNG")
-        output.seek(0)
+    # ImgBB-তে আপলোড
+    url = "https://api.imgbb.com/1/upload"
+    payload = {
+        "key": IMGBB_API_KEY,
+        "name": f"output-{uuid.uuid4()}.png"
+    }
+    files = {
+        "image": ("image.png", img_buffer, "image/png")
+    }
+    
+    response = requests.post(url, data=payload, files=files)
+    
+    if response.status_code == 200:
+        imgbb_data = response.json()
+        image_url = imgbb_data["data"]["url"]
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"image_url": image_url})
+        }
+    else:
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Failed to upload image to ImgBB"})
+        }
 
-        # ছবি রেজাল্ট হিসেবে ফেরত
-        return StreamingResponse(output, media_type="image/png")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"ত্রুটি: {str(e)}")
-
-@app.get("/")
-async def root():
-    return {"message": "POST /add-text-to-photo/ ব্যবহার করে ছবিতে টেক্সট যোগ করুন।"}
+if __name__ == "__main__":
+    print(handler())
