@@ -34,7 +34,7 @@ def handler():
     img_buffer.seek(0)
 
     # ImgBB API কী (Vercel Environment Variable থেকে)
-    IMGBB_API_KEY = os.environ.get('IMGBB_API_KEY', 'your-imgbb-api-key')  # Vercel-এ সেট করুন
+    IMGBB_API_KEY = os.environ.get('IMGBB_API_KEY', '49e643bce0ac76c1543daf0bd7870ba6')
 
     # ImgBB-তে আপলোড
     url = "https://api.imgbb.com/1/upload"
